@@ -140,52 +140,64 @@ Sora for display type and Inter for UI. All motion is Framer Motion and respects
 - **Storage**: files stay in browser memory; production uses a private Supabase bucket with
   scheduled deletion (`purge_expired_documents()`).
 
-## AI on Netlify (Google Gemini, free tier) — the deployed setup
+## AI on Vercel (Google Gemini, free tier) — the deployed setup
 
 ```
-netlify/functions/
-  _lib/ai.mjs      shared: key handling, OpenAI call, error mapping, rate limits
-  ai-chat.mjs      AI Assistant + PDF assistant (proofread / grammar / format / summary)
-  ai-notes.mjs     structured notes from PDF text, pasted text or a topic
-  ai-agent.mjs     agent study questions → answer + a saved study note
-  ai-health.mjs    connection test used by the AI provider page
-netlify.toml       build, publish, functions dir, VITE_AI_ENDPOINT=/ .netlify/functions/ai-chat
+api/
+  _lib_adapter.js  bridges Vercel (req, res) to the shared helpers
+  ai-chat.js       AI Assistant + PDF assistant (proofread / grammar / format / summary)
+  ai-notes.js      structured notes from PDF text, pasted text or a topic
+  ai-agent.js      agent study questions -> answer + a saved study note
+  ai-health.js     connection test used by the AI provider page
+vercel.json        build (vite -> dist), 60s function timeout, cache + security headers
 ```
 
-**The key never leaves the server.** Add it once in Netlify:
+The implementation itself lives once, in `netlify/functions/_lib/ai.mjs` (key handling, the
+Gemini call, error mapping, rate limits). The Vercel functions import it, so both hosts behave
+identically and there is nothing to keep in sync. The `netlify/` folder is kept so the same
+repo can still deploy to Netlify.
 
-> Site configuration → Environment variables → *Add a variable*
-> Key `GEMINI_API_KEY` · Value `AIza...` · Scope **Functions** (not Builds) → *Deploy site*
+**Deploy to Vercel**
 
-Optional variables: `AI_MODEL` (default `gemini-2.5-flash`), `AI_HOURLY_LIMIT` (10),
-`AI_DAILY_LIMIT` (50), `ALLOWED_ORIGIN` (comma-separated origins).
+1. Import `kunalpatil08-op/smart-qr-print` at vercel.com/new.
+2. Framework preset **Vite** — build `npm run build`, output `dist` (already in `vercel.json`).
+3. Project → Settings → Environment Variables → add:
 
-Free-tier mapping: 429 → *quota used up today / slow down*, 400 API_KEY_INVALID → *bad key*,
-SAFETY finish reason → *blocked, rephrase*, 5xx → *Gemini server error, retry*.
+   | Key | Value | Environments |
+   | --- | --- | --- |
+   | `GEMINI_API_KEY` | `AIza...` (aistudio.google.com/app/apikey) | Production, Preview, Development |
 
-The only AI values that reach the browser are the endpoint URL and the model name —
-both in `netlify.toml` under `[build.environment]`. No `VITE_` variable ever holds a secret.
+4. Redeploy. The browser calls `/api/ai-chat` (relative), so no build-time variable is needed.
+
+Optional variables: `AI_MODEL` (default `gemini-3.1-flash-lite`), `AI_HOURLY_LIMIT` (10),
+`AI_DAILY_LIMIT` (50), `ALLOWED_ORIGIN` (comma-separated origins), `AI_THINKING` (`on` to let
+Gemini think — slower, better answers).
+
+Free-tier mapping: 429 -> *quota used up today / slow down*, 400 API_KEY_INVALID -> *bad key*,
+SAFETY finish reason -> *blocked, rephrase*, 5xx -> *Gemini server error, retry*.
+
+**The key never leaves the server.** No `VITE_` variable ever holds a secret; the only AI
+values that reach the browser are the endpoint path and the model name.
 
 **Debugging a failed call.** Every function prints one structured line per request:
 
 ```
-[ai] {"ts":"…","fn":"ai-chat","ok":false,"status":502,"code":"bad_key","model":"gpt-4o-mini",
-      "ms":42,"client":"web_ab12","promptChars":9,"requestId":"01M72KC…","err":"OpenAI rejected the API key…"}
+[ai] {"ts":"...","fn":"ai-chat","ok":false,"status":502,"code":"bad_key","model":"gemini-3.1-flash-lite",
+      "ms":42,"client":"web_ab12","promptChars":9,"err":"Google rejected the API key..."}
 ```
 
-No key, header or user text is ever logged — only lengths, ids and outcomes. The same
-`requestId` is shown in the AI provider page and in any error message, so a Netlify log line
-can be matched to a user report.
+No key, header or user text is ever logged — only lengths, ids and outcomes. Those lines are in
+Vercel → Deployments → Functions → Logs.
 
-`scripts/mock-openai.mjs` is a local stand-in for the OpenAI endpoint used only to prove the
-wiring (it can force 401/429/500). It is never used by the app.
-
-Run it locally exactly as deployed:
+Local development with the functions running:
 
 ```bash
-npm i -g netlify-cli
-netlify dev          # serves the site AND the functions at /.netlify/functions/*
+npm i -g vercel
+vercel dev           # serves the site AND /api/* on http://localhost:3000
 ```
+
+`scripts/mock-gemini.mjs` is a local stand-in for the Gemini endpoint used only to prove the
+wiring (it can force 429/500/safety). It is never used by the app.
 
 ## Turning the AI on (the "AI provider is not connected" message)
 

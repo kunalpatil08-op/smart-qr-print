@@ -22,19 +22,19 @@ const PROVIDERS = [
 export default function AiSettings() {
   const toast = useToast()
   const [provider, setProvider] = useState('gemini')
-  const [tab, setTab] = useState('netlify')
+  const [tab, setTab] = useState('vercel')
   const [testing, setTesting] = useState(false)
   const [health, setHealth] = useState(null) // null | {ok, providerConfigured, model, error}
 
   const p = PROVIDERS.find((x) => x.id === provider)
 
-  const endpointHint = useMemo(() => (isAIConfigured ? AI_ENDPOINT : '/.netlify/functions/ai-chat'), [])
+  const endpointHint = useMemo(() => (isAIConfigured ? AI_ENDPOINT : '/api/ai-chat'), [])
 
-  const cmd = `# Netlify -> Site configuration -> Environment variables -> Add a variable
+  const cmd = `# Vercel -> Project -> Settings -> Environment Variables -> Add New
 #   Key:   GEMINI_API_KEY
 #   Value: ${p.key}
-#   Scope: Functions   (NOT "Builds")
-# then: netlify deploy --prod`
+#   Environments: Production, Preview, Development
+# then: Deployments -> ... -> Redeploy`
 
   const checkHealth = async () => {
     setTesting(true)
@@ -110,7 +110,7 @@ export default function AiSettings() {
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-[14px] font-semibold text-white"><KeyRound size={14} className="text-electric-300" /> Pick your provider</h2>
-            <SegmentedControl options={[{ value: 'netlify', label: 'Netlify' }, { value: 'local', label: 'Local dev' }]} value={tab} onChange={setTab} />
+            <SegmentedControl options={[{ value: 'vercel', label: 'Vercel' }, { value: 'local', label: 'Local dev' }]} value={tab} onChange={setTab} />
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -124,19 +124,19 @@ export default function AiSettings() {
 
           <div className="mt-4 rounded-xl border border-white/8 bg-navy-950/60 p-3">
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500">
-              <Terminal size={11} /> {tab === 'netlify' ? 'Step 1 · add the secret in Netlify (Functions scope)' : 'Step 1 · local gateway with the same key'}
+              <Terminal size={11} /> {tab === 'vercel' ? 'Step 1 · add the secret in Vercel' : 'Step 1 · local gateway with the same key'}
             </p>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-black/40 p-2.5 font-mono text-[10.5px] leading-relaxed text-emerald-200">
-{tab === 'netlify' ? cmd : `GEMINI_API_KEY=${p.key} AI_MODEL=${p.model} netlify dev`}
+{tab === 'vercel' ? cmd : `GEMINI_API_KEY=${p.key} AI_MODEL=${p.model} node server/ai-gateway.mjs`}
             </pre>
-            <button onClick={() => copy(tab === 'netlify' ? 'GEMINI_API_KEY' : `GEMINI_API_KEY=${p.key}`)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-electric-300 hover:text-electric-200"><Copy size={11} /> Copy</button>
+            <button onClick={() => copy(tab === 'vercel' ? 'GEMINI_API_KEY' : `GEMINI_API_KEY=${p.key}`)} className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-electric-300 hover:text-electric-200"><Copy size={11} /> Copy</button>
             <a href={p.docs} target="_blank" rel="noreferrer" className="ml-3 inline-flex items-center gap-1 text-[11px] font-medium text-ink-400 hover:text-white">Get a key <ExternalLink size={10} /></a>
           </div>
 
           <div className="mt-3 rounded-xl border border-white/8 bg-navy-950/60 p-3">
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500"><Server size={11} /> Step 2 · point the app at it</p>
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-lg bg-black/40 p-2.5 font-mono text-[10.5px] leading-relaxed text-electric-200">
-{`# netlify.toml (already set in this project)
+{`# vercel.json (already set in this project)
 VITE_AI_ENDPOINT=${endpointHint}
 VITE_AI_MODEL=${p.model}
 
@@ -155,7 +155,7 @@ npm run build`}
             <h2 className="flex items-center gap-2 text-[14px] font-semibold text-white"><ShieldCheck size={14} className="text-emerald-400" /> How it is wired</h2>
             <ol className="mt-3 space-y-2 text-[11.5px] leading-relaxed text-ink-400">
               {[
-                'The browser calls /.netlify/functions/ai-chat with { messages, system, temperature }.',
+                'The browser calls /api/ai-chat with { messages, system, temperature }.',
                 'The function reads GEMINI_API_KEY from its environment and calls Gemini Flash.',
                 'The answer comes back as { content } and is rendered in the chat.',
                 'If anything is missing, the UI says exactly that — it never invents a reply.',
@@ -185,7 +185,7 @@ npm run build`}
               <li><code className="rounded bg-black/30 px-1">ai-health</code> — the connection test above</li>
               <li className="text-ink-500">Provider: <b className="text-ink-300">Google Gemini</b> (free tier) · model <code className="rounded bg-black/30 px-1">gemini-2.5-flash</code></li>
             </ul>
-            <p className="mt-2 text-[10.5px] leading-relaxed text-ink-600">Usage limits are enforced server-side and sized for the Gemini free tier: AI_HOURLY_LIMIT (default 10) and AI_DAILY_LIMIT (default 50) per client. Set them as Netlify variables too.</p>
+            <p className="mt-2 text-[10.5px] leading-relaxed text-ink-600">Usage limits are enforced server-side and sized for the Gemini free tier: AI_HOURLY_LIMIT (default 10) and AI_DAILY_LIMIT (default 50) per client. Set them as Vercel variables too.</p>
           </Card>
         </div>
       </div>

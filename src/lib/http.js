@@ -37,9 +37,9 @@ export async function readJson(res, { what = 'AI function' } = {}) {
   const isHtml = contentType.includes('text/html') || /^\s*<!doctype html/i.test(text) || /^\s*<html/i.test(text)
   let message
   if (res.status === 404) {
-    message = `${what} was not found (HTTP 404). The site is probably deployed without Netlify Functions, or the function name changed.`
+    message = `${what} was not found (HTTP 404). The site is probably deployed without its /api functions, or the function name changed.`
   } else if (res.status === 502 || res.status === 504) {
-    message = `The function crashed or timed out (HTTP ${res.status}). Check the Netlify function log for this request id.`
+    message = `The function crashed or timed out (HTTP ${res.status}). Check the function log for this request id.`
   } else if (isHtml) {
     message = `${what} returned an HTML page instead of JSON (HTTP ${res.status}) — usually a redirect or a host error page, not the function.`
   } else {

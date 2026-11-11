@@ -1,5 +1,5 @@
 {
   "name": "smartqr-netlify-functions",
   "private": true,
-  "type": "commonjs"
+  "type": "module"
 }

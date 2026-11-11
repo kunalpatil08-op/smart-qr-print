@@ -308,7 +308,7 @@ export default function Agent() {
               <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-200">{ask.answer}</p>
             </div>
           )}
-          {!isAIConfigured && <IntegrationNote>AI is not configured on this deployment. Add GEMINI_API_KEY in Netlify to enable agent answers — nothing is simulated meanwhile.</IntegrationNote>}
+          {!isAIConfigured && <IntegrationNote>AI is not configured on this deployment. Add GEMINI_API_KEY in Vercel to enable agent answers — nothing is simulated meanwhile.</IntegrationNote>}
         </div>
       </Modal>
 
