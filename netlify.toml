@@ -1,0 +1,46 @@
+# SMART QR PRINT — Netlify configuration
+#
+# Frontend: Vite → dist/ (HashRouter, so no SPA rewrite is required for deep links).
+# Backend:  Netlify Functions in netlify/functions (ai-chat, ai-notes, ai-agent, ai-health).
+#
+# Secrets are NOT here. Add GEMINI_API_KEY in:
+#   Netlify → Site configuration → Environment variables → Add a variable
+#   (scope: Functions only — never "Builds").
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # The endpoint is a URL, not a secret. It is the only AI value that reaches the browser.
+  VITE_AI_ENDPOINT = "/.netlify/functions/ai-chat"
+  VITE_AI_MODEL = "gemini-3.1-flash-lite"
+
+# Functions are ES modules (.mjs) and must be bundled, so the shared _lib
+# folder and node_modules are included in each deployment.
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["netlify/functions/**"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# No catch-all SPA rewrite on purpose: the app uses HashRouter, so a catch-all
+# `/* → /index.html 200` would also swallow /.netlify/functions/* and turn a
+# missing function into an HTML page instead of a clear JSON 404.
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Cache-Control = "no-store"
