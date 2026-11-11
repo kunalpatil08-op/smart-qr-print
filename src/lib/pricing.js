@@ -51,19 +51,25 @@ export function calculatePrice({ pages, copies, color, duplex, paper, binding, p
 const round = (n) => Math.round(n * 100) / 100
 
 export const parsePageRanges = (input, totalPages) => {
-  if (!input || !input.trim()) return Array.from({ length: totalPages }, (_, i) => i + 1)
+  const total = Math.max(1, Math.floor(Number(totalPages) || 1))
+  // Blank = every page, whatever the total. Ranges clamp, reversed ranges flip,
+  // out-of-range pages are dropped, anything over the total is capped silently.
+  if (!input || !input.trim()) return Array.from({ length: total }, (_, i) => i + 1)
   const set = new Set()
-  for (const chunk of input.split(',')) {
+  for (const chunk of String(input).split(',')) {
     const part = chunk.trim()
     if (!part) continue
     const m = part.match(/^(\d+)\s*-\s*(\d+)$/)
     if (m) {
-      const a = Math.max(1, +m[1]), b = Math.min(totalPages, +m[2])
-      for (let i = a; i <= b; i++) set.add(i)
+      let a = Math.max(1, +m[1]), b = Math.max(1, +m[2])
+      if (a > b) [a, b] = [b, a]
+      for (let i = a; i <= Math.min(b, total); i++) set.add(i)
     } else if (/^\d+$/.test(part)) {
       const n = +part
-      if (n >= 1 && n <= totalPages) set.add(n)
+      if (n >= 1 && n <= total) set.add(n)
     }
   }
+  // "5" or a typo that selects nothing still prints everything — never a 0-page order.
+  if (set.size === 0) return Array.from({ length: total }, (_, i) => i + 1)
   return [...set].sort((a, b) => a - b)
 }

@@ -15,6 +15,7 @@ import DemoPayment from '../../components/DemoPayment.jsx'
 import ShopQrScanner from '../../components/ShopQrScanner.jsx'
 import { demoTransactions } from '../../lib/payments.js'
 import { calculatePrice, parsePageRanges, PAPER_SIZES } from '../../lib/pricing.js'
+import { safePageCount } from '../../lib/pdfPages.js'
 
 const STEPS = [
   { id: 1, label: 'Shop', icon: ScanLine },
@@ -202,22 +203,15 @@ export default function Print() {
     setFile(f)
     setFileUrl(url)
     setRangeInput('')
-    // Determine a real page count where the browser allows it.
-    try {
-      const buf = await f.slice(0, 4_000_000).arrayBuffer()
-      const text = new TextDecoder('latin1').decode(buf)
-      const matches = [...text.matchAll(/\/Type\s*\/Page[^s]/g)]
-      const count = matches.length || null
-      if (count) setPageCount(count)
-      else {
-        const m = text.match(/\/Count\s+(\d+)/)
-        setPageCount(m ? Number(m[1]) : 1)
-      }
-    } catch {
-      setPageCount(1)
-    }
+    setPageCount(0)
     setStep(3)
-    toast('File attached. Set your options next.', 'success')
+    toast('File attached. Counting pages…', 'info')
+    // Trust the browser's own PDF engine, not byte-scanning — reads every
+    // page of files of any size, including compressed PDFs.
+    safePageCount(f).then((n) => {
+      setPageCount(n)
+      toast(`PDF ready — ${n} page${n > 1 ? 's' : ''} detected. Print all or pick ranges.`, 'success')
+    })
   }
 
   const clearFile = () => {
@@ -367,23 +361,32 @@ export default function Print() {
               </Card>
               <Card className="p-5">
                 <h3 className="text-[14px] font-semibold text-white">Page selection</h3>
-                <p className="mt-1 text-[11.5px] text-ink-500">Leave blank to print every page.</p>
+                <p className="mt-1 text-[11.5px] text-ink-500">Leave blank to print every page — all {pageCount || '…'} pages, no cap.</p>
                 <Input label="Page ranges" placeholder="e.g. 1-5, 8, 12-16" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} className="mt-3" />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button variant={rangeInput === '' ? 'primary' : 'secondary'} size="sm" onClick={() => setRangeInput('')}>All {pageCount || '…'} pages</Button>
+                  {pageCount > 1 && (
+                    <Button variant="secondary" size="sm" onClick={() => setRangeInput(`1-${pageCount}`)}>1–{pageCount}</Button>
+                  )}
+                </div>
+                {pageCount === 0 && (
+                  <p className="mt-2 text-[11px] text-amber-300">Counting pages… selection unlocks in a moment.</p>
+                )}
                 <div className="mt-3 rounded-xl border border-white/8 bg-navy-950/40 p-3">
                   <div className="flex items-center justify-between text-[12px]">
                     <span className="text-ink-400">Selected pages</span>
-                    <span className="font-semibold text-white">{selectedPages.length} of {pageCount || '—'}</span>
+                    <span className="font-semibold text-white">{selectedPages.length} of {pageCount || '…'}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {selectedPages.slice(0, 40).map((p) => (
+                    {selectedPages.slice(0, 60).map((p) => (
                       <span key={p} className="rounded bg-electric-400/12 px-1.5 py-0.5 text-[10.5px] text-electric-300">{p}</span>
                     ))}
-                    {selectedPages.length > 40 && <span className="text-[10.5px] text-ink-500">+{selectedPages.length - 40} more</span>}
+                    {selectedPages.length > 60 && <span className="text-[10.5px] text-ink-500">+{selectedPages.length - 60} more</span>}
                   </div>
                 </div>
                 <div className="mt-4 flex gap-2">
                   <Button variant="secondary" size="sm" onClick={() => go(2)}><ChevronLeft size={14} /> Back</Button>
-                  <Button size="sm" className="flex-1" onClick={() => go(4)}>Configure options <ChevronRight size={14} /></Button>
+                  <Button size="sm" className="flex-1" disabled={pageCount === 0} onClick={() => go(4)}>Configure options <ChevronRight size={14} /></Button>
                 </div>
               </Card>
             </div>

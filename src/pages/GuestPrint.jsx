@@ -16,6 +16,7 @@ import { useGuest } from '../context/GuestContext.jsx'
 import { useToast } from '../components/Toast.jsx'
 import { fmtMoney, fmtDate, STAGE_LABELS, ORDER_STAGES } from '../lib/db.js'
 import { calculatePrice, parsePageRanges, PAPER_SIZES } from '../lib/pricing.js'
+import { safePageCount } from '../lib/pdfPages.js'
 import { demoTransactions } from '../lib/payments.js'
 
 const STEPS = [
@@ -107,18 +108,19 @@ export default function GuestPrint() {
     setReading(true)
     if (fileUrl) URL.revokeObjectURL(fileUrl)
     const url = URL.createObjectURL(f)
-    setFile(f); setFileUrl(url); setRangeInput('')
-    try {
-      const buf = await f.slice(0, 4_000_000).arrayBuffer()
-      const text = new TextDecoder('latin1').decode(buf)
-      const m = [...text.matchAll(/\/Type\s*\/Page[^s]/g)]
-      setPageCount(m.length || Number((text.match(/\/Count\s+(\d+)/) || [])[1]) || 1)
-    } catch {
+    setFile(f); setFileUrl(url); setRangeInput(''); setPageCount(0)
+    // Trust the browser's own PDF engine, not byte-scanning — counts every
+    // page of files of any size, including compressed PDFs.
+    safePageCount(f).then((n) => {
+      setPageCount(n)
+      toast(`PDF ready — ${n} pages detected. Print all or pick ranges.`, 'success')
+      setReading(false)
+      go(3)
+    }).catch(() => {
       setPageCount(1)
-    }
-    setReading(false)
-    toast('PDF ready. Choose your options.', 'success')
-    go(3)
+      setReading(false)
+      go(3)
+    })
   }
 
   const clearFile = () => {
@@ -265,7 +267,7 @@ export default function GuestPrint() {
                   )}
                   <div className="mt-3 flex gap-2">
                     <Button variant="secondary" size="sm" onClick={() => go(1)}><ChevronLeft size={13} /> Shop</Button>
-                    {file && <Button size="sm" className="flex-1" onClick={() => go(3)}>Continue <ChevronRight size={13} /></Button>}
+                    {file && pageCount > 0 && <Button size="sm" className="flex-1" onClick={() => go(3)}>Continue <ChevronRight size={13} /></Button>}
                   </div>
                 </Card>
               </div>
@@ -318,7 +320,7 @@ export default function GuestPrint() {
                       </select>
                     </div>
                   </div>
-                  <Input label={`Pages (blank = all ${pageCount})`} placeholder="e.g. 1-5, 8" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} />
+                  <Input label={`Pages (blank = all ${pageCount || '…'} — no cap)`} placeholder="e.g. 1-5, 8" value={rangeInput} onChange={(e) => setRangeInput(e.target.value)} />
                   <Toggle checked={binding} onChange={setBinding} label={`Spiral binding (₹${shop?.pricing?.binding ?? 15} per copy)`} />
                 </Card>
 

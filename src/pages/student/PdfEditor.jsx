@@ -6,6 +6,7 @@ import {
 import { Badge, Button, Card, IntegrationNote, SegmentedControl, Textarea } from '../../components/ui.jsx'
 import { useToast } from '../../components/Toast.jsx'
 import { isAIConfigured, requestCompletion } from '../../lib/ai.js'
+import { safePageCount } from '../../lib/pdfPages.js'
 import { Link } from 'react-router-dom'
 
 const makePage = (n) => ({ uid: `p_${n}_${Math.random().toString(36).slice(2, 7)}`, source: n, rotation: 0, deleted: false })
@@ -63,14 +64,8 @@ export default function PdfEditor() {
     if (url) URL.revokeObjectURL(url)
     const u = URL.createObjectURL(f)
     setFile(f); setUrl(u); setSelected([]); setText(''); setAiOut(null)
-    let count = 1
-    try {
-      const buf = await f.slice(0, 4_000_000).arrayBuffer()
-      const t = new TextDecoder('latin1').decode(buf)
-      const m = [...t.matchAll(/\/Type\s*\/Page[^s]/g)]
-      count = m.length || Number((t.match(/\/Count\s+(\d+)/) || [])[1]) || 1
-    } catch { count = 1 }
-    count = Math.min(Math.max(count, 1), 60)
+    toast('Reading pages with the browser PDF engine…', 'info')
+    const count = await safePageCount(f)
     setPages(Array.from({ length: count }, (_, i) => makePage(i + 1)))
     toast(`Loaded ${f.name} — ${count} page${count > 1 ? 's' : ''} detected.`, 'success')
   }
