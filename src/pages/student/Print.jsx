@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   ScanLine, UploadCloud, FileText, ChevronRight, ChevronLeft, Settings2, ReceiptText,
-  CreditCard, CheckCircle2, X, Loader2, QrCode, Copy, Printer, Clock, ShieldCheck,
+  CreditCard, CheckCircle2,
+  QrCode, Printer, Clock, ShieldCheck,
   AlertTriangle, Trash2, RefreshCw, Store, FlaskConical,
 } from 'lucide-react'
 import { Badge, Button, Card, Input, IntegrationNote, Modal, SegmentedControl, Toggle } from '../../components/ui.jsx'
@@ -12,8 +13,9 @@ import { useAuth } from '../../context/AuthContext.jsx'
 import { useToast } from '../../components/Toast.jsx'
 import { fmtMoney, fmtDate, STAGE_LABELS, ORDER_STAGES } from '../../lib/db.js'
 import DemoPayment from '../../components/DemoPayment.jsx'
+import LivePayment, { CheckoutSuccess } from '../../components/LivePayment.jsx'
 import ShopQrScanner from '../../components/ShopQrScanner.jsx'
-import { demoTransactions } from '../../lib/payments.js'
+import { demoTransactions, recordLivePayment } from '../../lib/payments.js'
 import { calculatePrice, parsePageRanges, PAPER_SIZES } from '../../lib/pricing.js'
 import { safePageCount } from '../../lib/pdfPages.js'
 
@@ -168,11 +170,12 @@ export default function Print() {
   const [paper, setPaper] = useState('A4')
   const [binding, setBinding] = useState(false)
   const [rotate, setRotate] = useState(0)
-  const [paying, setPaying] = useState(false)
   const [order, setOrder] = useState(null)
   const [retentionAck, setRetentionAck] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
   const [demoTx, setDemoTx] = useState(null)
+  const [paid, setPaid] = useState(false) // verified live/test-key payment → success screen
+  const [receipt, setReceipt] = useState(null)
   const [scanOpen, setScanOpen] = useState(false)
   const fileRef = useRef(null)
 
@@ -253,17 +256,30 @@ export default function Print() {
     setStep(6)
   }
 
-  const payNow = async () => {
-    setPaying(true)
-    await new Promise((r) => setTimeout(r, 900))
-    setPaying(false)
-    toast('Payment gateway is not configured in this build. The order stays at “Payment pending”.', 'warning', { duration: 6000 })
-  }
-
   const onDemoResult = (tx) => {
     setDemoTx(tx)
     data.logEvent(order.id, order.status, `Demo payment ${tx.outcome === 'success' ? 'simulated as successful' : 'simulated as failed'} (${tx.id}) — not a real payment; order unchanged`)
   }
+
+  /** Called only from Razorpay's own success handler — never simulated. */
+  const onLiveVerified = (rcpt) => {
+    data.setOrder(order.id, {
+      payment: {
+        provider: 'razorpay',
+        ref: rcpt.razorpayPaymentId || rcpt.id,
+        razorpayOrderId: rcpt.razorpayOrderId || '',
+        method: rcpt.method,
+        testMode: livePaymentMode() !== 'live',
+        verifiedAt: new Date().toISOString(),
+      },
+    })
+    data.advanceOrder(order.id, 'payment_verified', `Payment verified via Razorpay (${rcpt.razorpayPaymentId || rcpt.id}) — job released to the shop`)
+    setReceipt(rcpt)
+    setPaid(true)
+    toast('Payment successful! Your print job is now with the shop.', 'success')
+  }
+
+  const livePaymentMode = () => (import.meta.env.VITE_RAZORPAY_KEY_ID || '').startsWith('rzp_live') ? 'live' : 'test'
 
   const simulateVerified = () => {
     // Clearly-labelled development action: mirrors the webhook a real gateway would call.
@@ -279,6 +295,7 @@ export default function Print() {
     toast('Order cancelled.', 'info')
   }
 
+  const startFresh = () => { setOrder(null); setPaid(false); setReceipt(null); setDemoTx(null); clearFile(); setStep(1) }
   const canCancel = order && ['payment_pending', 'payment_verified', 'in_queue'].includes(order.status)
 
   return (
@@ -504,74 +521,69 @@ export default function Print() {
             </div>
           )}
 
-          {step === 6 && order && (
+          {step === 6 && order && !paid && (
             <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-              <Card className="p-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-[15px] font-semibold text-white">Step 6 · Payment</h2>
-                  <Badge tone="amber" dot>{STAGE_LABELS[order.status]}</Badge>
-                </div>
-                <div className="mt-4 rounded-xl border border-white/8 bg-navy-950/40 p-4">
+              <div className="space-y-4">
+                <Card className="p-5">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[11px] text-ink-500">Order</p>
-                      <p className="font-mono text-[13px] font-semibold text-white">#{order.id.replace('ord_', '')}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[11px] text-ink-500">Amount payable</p>
-                      <p className="font-display text-xl font-bold text-white">{fmtMoney(order.amount)}</p>
-                    </div>
+                    <h2 className="text-[15px] font-semibold text-white">Step 6 · Payment</h2>
+                    <Badge tone="amber" dot>{STAGE_LABELS[order.status]}</Badge>
                   </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] px-3 py-2.5">
-                  <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-amber-200">
-                    <FlaskConical size={12} /> Demo payment mode is on
-                  </p>
-                  <p className="mt-0.5 text-[10.5px] leading-relaxed text-amber-200/75">
-                    TEST PAYMENT – NO REAL MONEY PAID. Test the whole checkout safely; a demo result never releases a print job.
-                  </p>
-                </div>
-
-                {demoTx ? (
-                  <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="mt-4 rounded-xl border border-white/8 bg-navy-950/40 p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[12px] font-semibold text-white">
-                        {demoTx.outcome === 'success' ? 'Demo payment simulated' : 'Demo payment simulated as failed'}
-                      </p>
-                      <Badge tone={demoTx.outcome === 'success' ? 'slate' : 'red'}>TEST</Badge>
-                    </div>
-                    <p className="mt-1 font-mono text-[11px] text-ink-400">{demoTx.id}</p>
-                    <p className="mt-1 text-[10.5px] leading-relaxed text-ink-500">
-                      TEST PAYMENT – NO REAL MONEY PAID. Order stays “{STAGE_LABELS[order.status]}”; printing is not released by a demo payment.
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <Button size="sm" variant="secondary" onClick={() => setDemoOpen(true)}>View receipt</Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setDemoTx(null); setDemoOpen(true) }}>Try again</Button>
+                      <div>
+                        <p className="text-[11px] text-ink-500">Order</p>
+                        <p className="font-mono text-[13px] font-semibold text-white">#{order.id.replace('ord_', '')}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] text-ink-500">Amount payable</p>
+                        <p className="font-display text-xl font-bold text-white">{fmtMoney(order.amount)}</p>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    <Button onClick={() => setDemoOpen(true)}><FlaskConical size={15} /> Demo payment</Button>
-                    <Button variant="secondary" onClick={() => go(7)}>View order tracking</Button>
-                  </div>
-                )}
+                  <p className="mt-3 text-[11px] leading-relaxed text-ink-500">
+                    Pay securely below — the job is released to the shop the moment payment verifies.
+                    Prefer to rehearse first? The demo checkout is further down and never moves money.
+                  </p>
+                </Card>
 
-                <div className="mt-4 border-t border-white/8 pt-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">Live payment</p>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {['UPI', 'Card', 'Net banking', 'Pay at counter'].map((m) => (
-                      <div key={m} className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5 text-[12px] text-ink-500">{m}</div>
-                    ))}
-                  </div>
-                  <Button className="mt-2 w-full" variant="secondary" onClick={payNow} loading={paying}>
-                    <CreditCard size={15} /> {paying ? 'Contacting gateway…' : 'Pay with real money (not configured)'}
-                  </Button>
-                  <p className="mt-1.5 text-[10.5px] text-ink-600">No gateway key is set, so this cannot take money — it says so rather than pretending.</p>
-                </div>
+                <LivePayment
+                  order={order}
+                  shopName={shop?.name}
+                  prefill={{ name: user?.name || '', email: user?.email || '' }}
+                  onVerified={onLiveVerified}
+                />
 
-                {canCancel && <Button variant="danger" size="sm" className="mt-4" onClick={cancelOrder}>Cancel order</Button>}
-              </Card>
+                <Card className="p-5">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical size={13} className="text-amber-300" />
+                    <h3 className="text-[13px] font-semibold text-amber-200">Demo checkout (test mode)</h3>
+                    <Badge tone="slate" className="ml-auto">TEST</Badge>
+                  </div>
+                  <p className="mt-1 text-[10.5px] leading-relaxed text-ink-500">
+                    TEST PAYMENT – NO REAL MONEY PAID. Rehearse the flow safely; a demo result never releases a print job.
+                  </p>
+                  {demoTx ? (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[12px] font-semibold text-white">
+                          {demoTx.outcome === 'success' ? 'Demo payment simulated' : 'Demo payment simulated as failed'}
+                        </p>
+                        <Badge tone={demoTx.outcome === 'success' ? 'slate' : 'red'}>TEST</Badge>
+                      </div>
+                      <p className="mt-1 font-mono text-[11px] text-ink-400">{demoTx.id}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="secondary" onClick={() => setDemoOpen(true)}>View receipt</Button>
+                        <Button size="sm" variant="ghost" onClick={() => { setDemoTx(null); setDemoOpen(true) }}>Try again</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" size="sm" className="mt-3" onClick={() => setDemoOpen(true)}><FlaskConical size={14} /> Open demo checkout</Button>
+                  )}
+                </Card>
+
+                {canCancel && <Button variant="danger" size="sm" className="mt-1" onClick={cancelOrder}>Cancel order</Button>}
+              </div>
               <Card className="p-5">
                 <h3 className="text-[14px] font-semibold text-white">Demo transactions for this order</h3>
                 <ul className="mt-3 space-y-2">
@@ -594,6 +606,16 @@ export default function Print() {
                 <p className="mt-3 text-[10.5px] text-ink-600">Order ID {order.id}</p>
               </Card>
             </div>
+          )}
+
+          {step === 6 && order && paid && receipt && (
+            <CheckoutSuccess
+              receipt={receipt}
+              order={{ ...order, status: 'payment_verified' }}
+              shop={shop}
+              onTrack={() => go(7)}
+              onNewOrder={startFresh}
+            />
           )}
 
           {step === 7 && order && (

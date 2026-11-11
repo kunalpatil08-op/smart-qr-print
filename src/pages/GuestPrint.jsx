@@ -17,6 +17,7 @@ import { useToast } from '../components/Toast.jsx'
 import { fmtMoney, fmtDate, STAGE_LABELS, ORDER_STAGES } from '../lib/db.js'
 import { calculatePrice, parsePageRanges, PAPER_SIZES } from '../lib/pricing.js'
 import { safePageCount } from '../lib/pdfPages.js'
+import LivePayment, { CheckoutSuccess } from '../components/LivePayment.jsx'
 import { demoTransactions } from '../lib/payments.js'
 
 const STEPS = [
@@ -83,6 +84,8 @@ export default function GuestPrint() {
   const [demoOpen, setDemoOpen] = useState(false)
   const [order, setOrder] = useState(null)
   const [demoTx, setDemoTx] = useState(null)
+  const [paid, setPaid] = useState(false)
+  const [receipt, setReceipt] = useState(null)
   const [retentionAck, setRetentionAck] = useState(false)
   const fileRef = useRef(null)
 
@@ -164,7 +167,28 @@ export default function GuestPrint() {
   }
 
   const canCancel = order && ['payment_pending', 'payment_verified', 'in_queue'].includes(order.status)
-  const payNow = () => toast('Live payments are not configured. Use demo payment to test, or ask the shop to take payment at the counter.', 'warning', { duration: 6000 })
+
+  /** Called only from Razorpay's own success handler — never simulated. */
+  const onLiveVerified = (rcpt) => {
+    const mode = (import.meta.env.VITE_RAZORPAY_KEY_ID || '').startsWith('rzp_live') ? 'live' : 'test'
+    data.setOrder(order.id, {
+      payment: {
+        provider: 'razorpay',
+        ref: rcpt.razorpayPaymentId || rcpt.id,
+        razorpayOrderId: rcpt.razorpayOrderId || '',
+        method: rcpt.method,
+        testMode: mode !== 'live',
+        verifiedAt: new Date().toISOString(),
+      },
+    })
+    data.advanceOrder(order.id, 'payment_verified', `Payment verified via Razorpay (${rcpt.razorpayPaymentId || rcpt.id}) — job released to the shop`)
+    setOrder({ ...order, status: 'payment_verified' })
+    setReceipt(rcpt)
+    setPaid(true)
+    toast('Payment successful! Your print job is now with the shop.', 'success')
+  }
+
+  const startFresh = () => { setOrder(null); setPaid(false); setReceipt(null); setDemoTx(null); clearFile(); go(2) }
 
   return (
     <div className="min-h-screen">
@@ -381,8 +405,14 @@ export default function GuestPrint() {
             )}
 
             {/* 5 · pay */}
-            {step === 5 && order && (
+            {step === 5 && order && !paid && (
               <div className="space-y-3">
+                <LivePayment
+                  order={order}
+                  shopName={shop?.name}
+                  compact
+                  onVerified={onLiveVerified}
+                />
                 <Card className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -394,15 +424,25 @@ export default function GuestPrint() {
                       <p className="font-display text-xl font-bold text-white">{fmtMoney(order.amount)}</p>
                     </div>
                   </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button onClick={() => setDemoOpen(true)}><FlaskConical size={14} /> Demo payment</Button>
-                    <Button variant="secondary" onClick={payNow}><CreditCard size={14} /> Pay for real</Button>
+                  <div className="mt-3">
+                    <Button variant="secondary" className="w-full" onClick={() => setDemoOpen(true)}><FlaskConical size={14} /> Rehearse with demo payment</Button>
                   </div>
-                  <p className="mt-2 text-[10.5px] leading-relaxed text-ink-600">Live payments are not configured yet. Demo payment is clearly labelled and never releases a print job.</p>
+                  <p className="mt-2 text-[10.5px] leading-relaxed text-ink-600">Demo is TEST MODE — no money moves and no job is released.</p>
                   {canCancel && <button onClick={cancelOrder} className="mt-3 text-[11.5px] text-rose-300 hover:text-rose-200">Cancel this order</button>}
                 </Card>
                 <Button variant="secondary" size="sm" className="w-full" onClick={() => go(6)}>See order status <ChevronRight size={13} /></Button>
               </div>
+            )}
+
+            {/* 5b · payment success celebration */}
+            {step === 5 && order && paid && receipt && (
+              <CheckoutSuccess
+                receipt={receipt}
+                order={{ ...order, status: 'payment_verified' }}
+                shop={shop}
+                onTrack={() => go(6)}
+                onNewOrder={startFresh}
+              />
             )}
 
             {/* 6 · status + receipt */}
