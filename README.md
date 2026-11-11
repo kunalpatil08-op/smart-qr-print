@@ -140,6 +140,28 @@ Sora for display type and Inter for UI. All motion is Framer Motion and respects
 - **Storage**: files stay in browser memory; production uses a private Supabase bucket with
   scheduled deletion (`purge_expired_documents()`).
 
+## Real payments (Razorpay — hackathon build)
+
+Step 6 now opens **real Razorpay Checkout** (UPI / card / netbanking / wallet) instead of a
+placeholder. After a verified payment the app shows a full-screen celebration — confetti,
+animated tick, receipt and a pickup code — then "Track my print" and "go collect your prints"
+steps. The demo checkout is still there underneath, clearly labelled TEST MODE.
+
+**Enable it (2 minutes, free test keys — no real money moves):**
+
+1. Sign up at razorpay.com → Dashboard → **Test Mode** → Settings → API Keys → Generate.
+2. Local: create `.env.local` with `VITE_RAZORPAY_KEY_ID=rzp_test_...` and `npm run dev`.
+   Vercel: Project → Settings → Environment Variables → add `VITE_RAZORPAY_KEY_ID`
+   (Production + Preview) → Redeploy.
+3. Pay with test credentials: UPI `success@razorpay`, or card `4111 1111 1111 1111`
+   (any future expiry, any CVV) — see https://razorpay.com/docs/payments/payments/test-card-details.
+4. Without the key the card shows "Not configured" and judges use the demo flow — nothing is faked.
+
+Only the **key id** (`rzp_test_...`) is public by design. The key secret stays with Razorpay /
+your server — this build records verification client-side for the hackathon demo and labels
+every receipt accordingly. For production, verify `razorpay_signature` server-side before
+releasing the job.
+
 ## AI on Vercel (Google Gemini, free tier) — the deployed setup
 
 ```
