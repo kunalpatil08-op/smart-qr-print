@@ -323,7 +323,7 @@ export default function GuestPrint() {
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <p className="mb-1.5 text-[12px] font-medium text-ink-300">Colour</p>
-                      <SegmentedControl className="w-full [&>button]:flex-1" options={[{ value: 'bw', label: 'B&amp;W' }, { value: 'color', label: 'Colour' }]} value={color ? 'color' : 'bw'} onChange={(v) => setColor(v === 'color')} />
+                      <SegmentedControl className="w-full [&>button]:flex-1" options={[{ value: 'bw', label: 'B&W' }, { value: 'color', label: 'Colour' }]} value={color ? 'color' : 'bw'} onChange={(v) => setColor(v === 'color')} />
                     </div>
                     <div>
                       <p className="mb-1.5 text-[12px] font-medium text-ink-300">Sides</p>
