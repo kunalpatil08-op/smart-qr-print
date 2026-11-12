@@ -18,7 +18,7 @@ npm run preview  # serve the production build
 ```
 
 The build is a static SPA that uses **HashRouter**, so it runs from any static host with no
-rewrite rules (deep links look like `/#/app/print`).
+rewrite rules (deep links look like `/#/app/print`)...
 
 ### Demo accounts
 
